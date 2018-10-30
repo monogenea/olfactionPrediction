@@ -2,19 +2,17 @@
 # Mon Oct 29 13:17:55 2018 ------------------------------
 ## DREAM olfaction prediction challenge
 library(caret)
-#library(yardstick)
 library(rsample)
 library(tidyverse)
 library(recipes)
 library(magrittr)
+library(doMC)
 
 # Create directory and download files
 dir.create("data/")
 ghurl <- "https://github.com/dream-olfaction/olfaction-prediction/raw/master/data/"
 download.file(paste0(ghurl, "TrainSet.txt"),
               destfile = "data/trainSet.txt")
-# download.file(paste0(ghurl, "TestSet.txt"),
-#               destfile = "data/testSet.txt")
 download.file(paste0(ghurl, "molecular_descriptors_data.txt"),
               destfile = "data/DRAGON.txt")
 
@@ -41,6 +39,13 @@ all(meanPlsnt$CID == molFeats$CID) # TRUE - rownames match
 X <-  mutate(molFeats, Y = meanPlsnt$pleasantness) %>% 
       select(-CID)
 
+# Filter nzv
+X <- X[,-nearZeroVar(X, freqCut = 4)] # == 80/20
+
+### DEBUG
+X <- select(X, 1:1000, Y)
+#####
+
 # Split train/test with rsample
 set.seed(100)
 initSplit <- initial_split(X, prop = .9)
@@ -55,22 +60,34 @@ ctrl <- trainControl(method = "cv")
 ctrl$index <- myFolds$index
 ctrl$indexOut <- myFolds$indexOut
 
+# binary vars
+binVars <- which(sapply(X, function(x){all(x %in% 0:1)}))
+
 # Design recipe
 myRec <- recipe(Y ~ ., data = trainSet) %>% 
-      step_nzv(all_predictors()) %>%
-      #step_YeoJohnson(has_type("numeric"), -all_outcomes()) %>% 
-      step_center(has_type("numeric"), -all_outcomes()) %>% 
-      step_scale(has_type("numeric"), -all_outcomes()) %>% 
+      step_YeoJohnson(all_predictors(), -binVars) %>% 
+      step_center(all_predictors(), -binVars) %>% 
+      step_scale(all_predictors(), -binVars) %>% 
       step_knnimpute(all_numeric(), K = 5)
 
 test <- prep(myRec, training = trainSet, retain = T)
 test <- juice(test)
 
+pcaRec <- myRec %>% 
+      step_kpca(all_predictors(), options = list(kernel = "rbfdot",
+                                                 kpar = list(sigma = .005)))
+
+myPCA <- prep(pcaRec, training = trainSet, retain = T)
+myPCA <- juice(myPCA)
+plot(myPCA$kPC1, myPCA$kPC2, cex = trainSet$Y/max(trainSet$Y) + .5,
+     col = rgb(0,0,0,.25), pch = 16)
+
 # Train PLS model
-plsMod <- train(myRec, data = trainSet,
-                method = "svmRadial",
-                tuneLength = 6,
-                trControl = ctrl)
+doMC::registerDoMC(10)
+fdaMod <- train(myRec, data = trainSet,
+            method = "rf",
+            tuneLength = 4,
+            trControl = ctrl)
 
 # Vaidate on testset
 preds <- predict(plsMod, newdata = testSet)
