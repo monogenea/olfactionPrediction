@@ -38,11 +38,8 @@ meanPlsnt <- responses %>%
 all(meanPlsnt$CID == molFeats$CID) # TRUE - rownames match
 
 # Concatenate predictors (molFeats) and population pleasantness
-X <-  mutate(molFeats, Y = meanPlsnt$pleasantness)
-
-# Clean up
-idx <- nearZeroVar(X, uniqueCut = .5)
-X <- X[,-idx]
+X <-  mutate(molFeats, Y = meanPlsnt$pleasantness) %>% 
+      select(-CID)
 
 # Split train/test with rsample
 set.seed(100)
@@ -60,16 +57,20 @@ ctrl$indexOut <- myFolds$indexOut
 
 # Design recipe
 myRec <- recipe(Y ~ ., data = trainSet) %>% 
-      step_knnimpute(all_predictors(), K = 5) %>% 
       step_nzv(all_predictors()) %>%
-      step_YeoJohnson(all_numeric()) %>% 
-      step_center(all_predictors()) %>% 
-      step_scale(all_predictors())
-      
+      #step_YeoJohnson(has_type("numeric"), -all_outcomes()) %>% 
+      step_center(has_type("numeric"), -all_outcomes()) %>% 
+      step_scale(has_type("numeric"), -all_outcomes()) %>% 
+      step_knnimpute(all_numeric(), K = 5)
+
+test <- prep(myRec, training = trainSet, retain = T)
+test <- juice(test)
+
 # Train PLS model
 plsMod <- train(myRec, data = trainSet,
-                method = "pls",
-                tuneGrid = data.frame(ncomp = seq(5, 20, length.out = 8)))
+                method = "svmRadial",
+                tuneLength = 6,
+                trControl = ctrl)
 
 # Vaidate on testset
 preds <- predict(plsMod, newdata = testSet)
