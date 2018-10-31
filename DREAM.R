@@ -82,8 +82,7 @@ legend("topleft", pch = 16,
        legend = c("Pleasant", "Neutral", "Unpleasant"), bty = "n")
 
 # Train
-doMC::registerDoMC(10)
-
+doMC::registerDoMC(6)
 plsMod <- train(myRec, data = trainSet,
                 method = "pls",
                 tuneGrid = data.frame(ncomp = c(5, 10, 15, 20, 30)),
@@ -98,14 +97,26 @@ rfMod <- train(myRec, data = trainSet,
                trControl = ctrl)
 
 svmMod <- train(myRec, data = trainSet,
-                method = "svmPoly",
-                tuneLength = 3,
+                method = "svmRadial",
+                tuneLength = 6,
                 trControl = ctrl)
 
+xgboost <- train(myRec, data = trainSet,
+                method = "xgbTree",
+                tuneLength = 4,
+                trControl = ctrl)
+
+bwplot(resamples(list("PLS" = plsMod,
+                      "RF" = rfMod,
+                      "SVM" = svmMod,
+                      "XGBOOST" = xgboost)),
+       metric = "MAE")
+
 # Validate on testset
-preds <- predict(plsMod, newdata = testSet)
+preds <- predict(svmMod, newdata = testSet)
 plot(preds, testSet$Y,
-     xlim = c(25,80), ylim = c(25,80),
-     xlab = "Predicted", ylab = "Observed")
+     xlim = c(25,85), ylim = c(25,85),
+     xlab = "Predicted", ylab = "Observed",
+     pch = 16, col = rgb(0, 0, 0, .5))
 abline(a=0, b=1)
 
