@@ -43,16 +43,19 @@ X <-  mutate(molFeats, Y = medianPlsnt$pleasantness) %>%
 X <- X[,-nearZeroVar(X, freqCut = 4)] # == 80/20
 
 # Split train/test with rsample
-set.seed(100)
-initSplit <- initial_split(X, prop = .9)
+set.seed(99)
+initSplit <- initial_split(X, prop = .9,
+                           strata = "Y")
 trainSet <- training(initSplit)
 testSet <- testing(initSplit)
 
 # Create 5-fold cross-validation, convert to caret class
-set.seed(100)
-myFolds <- vfold_cv(trainSet, v = 5) %>% 
+set.seed(99)
+myFolds <- vfold_cv(trainSet, v = 5, repeats = 3,
+                    strata = "Y") %>% 
       rsample2caret()
-ctrl <- trainControl(method = "cv")
+ctrl <- trainControl(method = "cv",
+                     selectionFunction = "oneSE")
 ctrl$index <- myFolds$index
 ctrl$indexOut <- myFolds$indexOut
 
@@ -85,7 +88,7 @@ legend("topleft", pch = 16,
 doMC::registerDoMC(6)
 plsMod <- train(myRec, data = trainSet,
                 method = "pls",
-                tuneGrid = data.frame(ncomp = c(5, 10, 15, 20, 30)),
+                tuneGrid = data.frame(ncomp = 1:10),
                 trControl = ctrl)
 
 rfMod <- train(myRec, data = trainSet,
@@ -113,10 +116,10 @@ bwplot(resamples(list("PLS" = plsMod,
        metric = "MAE")
 
 # Validate on testset
-preds <- predict(svmMod, newdata = testSet)
+preds <- predict(plsMod, newdata = testSet)
 plot(preds, testSet$Y,
-     xlim = c(25,85), ylim = c(25,85),
+     xlim = c(0,100), ylim = c(0,100),
      xlab = "Predicted", ylab = "Observed",
-     pch = 16, col = rgb(0, 0, 0, .5))
+     pch = 16, col = rgb(0, 0, 0, .25))
 abline(a=0, b=1)
 
